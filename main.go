@@ -1,8 +1,12 @@
 package main
 
 import (
+	"log"
+	"net/http"
 	"time"
 
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/thedevsaddam/renderer"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -44,4 +48,41 @@ func init() {
 	checkErr(err)
 	sess.SetMode(mgo.Monotonic, true)
 	db = sess.DB(dbName)
+}
+
+func main() {
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Get("/", homeHandler)
+	r.Get("/todo", todoHandlers())
+
+	srv := &http.Server{
+		Addr:         port,
+		Handler:      r,
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		log.Println("Listening on port", port)
+		
+	}
+}
+
+func todoHandlers() http.Handler{
+	rg := chi.NewRouter()
+	rg.Group(func(r chi.Router){
+		r.Get("/", fetchTodos)
+		r.Post("/", createTodo)
+		r.Put("/{id}", updateTodo)
+		r.Delete("/{id}", deleteTodo)
+	})
+	return rg
+}
+
+func checkErr(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
 }
