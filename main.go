@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/go-chi/chi"
@@ -50,7 +53,42 @@ func init() {
 	db = sess.DB(dbName)
 }
 
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+	err := rnd.Template(w, http.statusOK, []string{"/static/home.tpl"}, nil)
+	checkErr(err)
+}
+
+func fetchTodos(w http.ResponseWriter, r *http.Request) {
+	todos := []todoModel{}
+
+	if err := db.C(collectionName).Find(bson.M{}).All(&todos); err != nil {
+		rnd.JSON(w, http.StatusProcessing, renderer.M{
+			"message": "Failed to fetch todo",
+			"error":   err,
+		})
+		return
+	}
+
+	todoList := []todo{}
+
+	for _, t := range todos{
+		todoList = append(todoList, todo{
+			ID: T.ID,
+			Title: t.Title,
+			Completed: t.Completed,
+			CreatedAt: t.CreatedAt,
+		})
+	}
+
+	rnd.JSON(W, http.StatusOK, renderer.M{
+		"data": todoList,
+	})
+}
+
 func main() {
+	stopChan := make(chan os.Signal)
+	signal.Notify(stopChan, os.Interrupt)
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Get("/", homeHandler)
@@ -66,13 +104,23 @@ func main() {
 
 	go func() {
 		log.Println("Listening on port", port)
-		
+		if err := srv.ListenAndServe(); err != nil {
+			log.Println("listen:%s\n", err)
+		}
+	}()
+
+	<-stopChan
+	log.Println("shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	srv.Shutdown(ctx)
+	defer cancel {
+		log.Println("server gracefully stopped")
 	}
 }
 
-func todoHandlers() http.Handler{
+func todoHandlers() http.Handler {
 	rg := chi.NewRouter()
-	rg.Group(func(r chi.Router){
+	rg.Group(func(r chi.Router) {
 		r.Get("/", fetchTodos)
 		r.Post("/", createTodo)
 		r.Put("/{id}", updateTodo)
