@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -82,6 +83,42 @@ func fetchTodos(w http.ResponseWriter, r *http.Request) {
 
 	rnd.JSON(W, http.StatusOK, renderer.M{
 		"data": todoList,
+	})
+}
+
+func createTodo(w http.ResponseWriter, r *http.Request) {
+	var t todo
+
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		rnd.Json(w, http.statusProcessing, err)
+		return
+	}
+
+	if t.Title == "" {
+		rnd.JSON(w, http.StatusBadRequest, renderer.M{
+			"message": "title is required",
+		})
+		return
+	}
+
+	tm := todoModel{
+		ID:        bson.NewObjectId(),
+		Title:     t.Title,
+		completed: false,
+		createdAt: time.Now(),
+	}
+
+	if err := db.C(collectionName).Insert(&tm); err != nil {
+		rnd.JSON(w, http.statusProcessing, renderer.M{
+			"message": "failed to save todo",
+			"error":   err,
+		})
+		return
+	}
+
+	rnd.JSON(w, http.StatusCreated, renderer.M{
+		"message": "todo created successfully",
+		"todo_id": tm.ID.Hex(),
 	})
 }
 
